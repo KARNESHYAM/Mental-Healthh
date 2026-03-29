@@ -1,0 +1,163 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Document ID: userId (uid)
+    // Fields:
+    //   - uid: string (required, immutable) - The unique ID of the user
+    //   - email: string (required, immutable) - The user's email address
+    //   - displayName: string (optional) - The user's display name (max 100 chars)
+    //   - photoURL: string (optional) - URL to the user's profile photo
+    //   - phoneNumber: string (optional) - The user's phone number (max 20 chars)
+    //   - createdAt: string (required, immutable) - ISO 8601 timestamp
+    //   - settings: map (required) - User preferences
+    //   - role: string (optional) - User role (e.g., 'admin', 'user')
+    //
+    // Collection: moods
+    // Fields:
+    //   - uid: string (required, immutable) - The owner's UID
+    //   - mood: string (required) - One of: happy, calm, neutral, anxious, sad, angry
+    //   - intensity: number (required) - 1 to 10
+    //   - note: string (optional) - Max 500 chars
+    //   - timestamp: timestamp (required, immutable) - When the entry was created
+    //
+    // Collection: journals
+    // Fields:
+    //   - uid: string (required, immutable) - The owner's UID
+    //   - title: string (optional) - Max 200 chars
+    //   - content: string (required) - Max 5000 chars
+    //   - mood: string (optional)
+    //   - tags: list (optional) - Max 10 tags, each max 30 chars
+    //   - aiInsights: string (optional) - Max 2000 chars
+    //   - timestamp: timestamp (required, immutable) - When the entry was created
+    //
+    // Collection: chatSessions
+    // Fields:
+    //   - uid: string (required, immutable) - The owner's UID
+    //   - title: string (required) - Max 200 chars
+    //   - lastMessage: string (optional) - Max 1000 chars
+    //   - updatedAt: timestamp (required) - When the session was last updated
+    //   - createdAt: timestamp (required, immutable) - When the session was created
+    //
+    // Collection: chatSessions/{sessionId}/messages
+    // Fields:
+    //   - role: string (required, immutable) - 'user' or 'model'
+    //   - content: string (required, immutable) - Max 5000 chars
+    //   - image: string (optional, immutable) - Base64 or URL (max 1MB if base64)
+    //   - timestamp: timestamp (required, immutable) - When the message was sent
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    
+    function isAuthenticated() {
+      return true; // Bypassing Auth as requested
+    }
+
+    function isOwner(userId) {
+      return true; // Bypassing Auth as requested
+    }
+
+    function isDocOwner() {
+      return true; // Bypassing Auth as requested
+    }
+
+    function isAdmin() {
+      return false; // Admin features disabled in no-auth mode
+    }
+
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    function isValidUrl(url) {
+      return url is string && (url.matches("^https://.*") || url.matches("^http://.*") || url.matches("^data:image/.*"));
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+
+    function isValidUser(data) {
+      return hasRequiredFields(['uid', 'email', 'createdAt', 'settings']) &&
+             isValidEmail(data.email) &&
+             data.uid is string &&
+             (!('displayName' in data) || (data.displayName is string && data.displayName.size() <= 100)) &&
+             (!('photoURL' in data) || isValidUrl(data.photoURL)) &&
+             (!('phoneNumber' in data) || (data.phoneNumber is string && data.phoneNumber.size() <= 20)) &&
+             data.settings is map;
+    }
+
+    function isValidMood(data) {
+      return hasRequiredFields(['uid', 'mood', 'intensity', 'timestamp']) &&
+             data.mood in ['happy', 'calm', 'neutral', 'anxious', 'sad', 'angry'] &&
+             data.intensity is number && data.intensity >= 1 && data.intensity <= 10 &&
+             (!('note' in data) || (data.note is string && data.note.size() <= 500)) &&
+             data.timestamp is timestamp;
+    }
+
+    function isValidJournal(data) {
+      return hasRequiredFields(['uid', 'content', 'timestamp']) &&
+             data.content is string && data.content.size() <= 5000 &&
+             (!('title' in data) || (data.title is string && data.title.size() <= 200)) &&
+             (!('tags' in data) || (data.tags is list && data.tags.size() <= 10)) &&
+             data.timestamp is timestamp;
+    }
+
+    function isValidChatSession(data) {
+      return hasRequiredFields(['uid', 'title', 'createdAt', 'updatedAt']) &&
+             data.title is string && data.title.size() <= 200 &&
+             data.createdAt is timestamp &&
+             data.updatedAt is timestamp;
+    }
+
+    function isValidChatMessage(data) {
+      return hasRequiredFields(['role', 'content', 'timestamp']) &&
+             data.role in ['user', 'model'] &&
+             data.content is string && data.content.size() <= 5000 &&
+             (!('image' in data) || (data.image is string && data.image.size() <= 1500000)) && // ~1.5MB limit for base64
+             data.timestamp is timestamp;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow read, write: if true;
+    }
+
+    match /moods/{moodId} {
+      allow read, write: if true;
+      allow delete: if true;
+    }
+
+    match /journals/{journalId} {
+      allow read, write: if true;
+      allow delete: if true;
+    }
+
+    match /chatSessions/{sessionId} {
+      allow read, write: if true;
+      allow delete: if true;
+
+      match /messages/{messageId} {
+        allow read, write: if true;
+      }
+    }
+  }
+}
